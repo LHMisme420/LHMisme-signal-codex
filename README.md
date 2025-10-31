@@ -129,3 +129,6 @@ python generate_dossier.py
 git add Whoosafez_Fortified_Portfolio_Dossier_v1.2.0.pdf
 git commit -m "Add official portfolio dossier"
 git push
+git tag v1.2.0
+git push origin v1.2.0
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/LHMisme420/LHMisme-signal-codex/releases)
