@@ -2143,3 +2143,8 @@ def st_ui():
 if __name__ == "__main__":
     import click
     cli()
+FROM python:3.10-slim
+WORKDIR /app
+COPY . .
+RUN pip install -r requirements.txt
+CMD ["streamlit", "run", "whoosafez_v3.0.py", "--ui"]
