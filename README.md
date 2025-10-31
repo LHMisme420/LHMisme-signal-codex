@@ -27,12 +27,12 @@ This repository contains:
 git init
 git add .
 git commit -m "Signal Codex: Initial Deployment"
-git remote add origin https://github.com/yourname/signal-codex.git
+git remote add origin https://github.com/LHMISME420/signal-codex.git
 git push -u origin master
 git checkout -b codex-update
 git add .
 git commit -m "Updated Signal Codex with new phase modules and cadence engine"
-git clone https://github.com/yourname/signal-codex.git
+git clone https://github.com/LHMISME420/signal-codex.git
 cd signal-codex
 git checkout -b codex-deploy
 # Add your files and edits
