@@ -1589,3 +1589,105 @@ class WhoosafezXAI:
             raise EthicsBreach(f"📝 Text API rupture: {e}")
 
     def grok_vision_analysis(self, prompt: str, image_url: Optional[str] = None, image_base64: Optional[str] = None, max_tokens: int = 300)
+#!/usr/bin/env python3
+# =============================================================================
+# 🔥 WHOOSAFEZ v3.0: LANGCHAIN-ENTWINED ETHICAL xAI EMPIRE 🔥
+# =============================================================================
+# ULTIMATE BUILD: All Forged – Text/Vision API | Guards (Venom/Oath/Realm/OWASP/Salt)
+# CLI + Streamlit UI | LangChain Integration: Tools/Chains/Agents for Ethical Routing
+# Ruptures Shadows at 100k QPS | Audits Sealed (CC-BY-SA-4.0) | Catch the Cosmos!
+# 
+# NEW: LangChain Tools for Dynamic Ethics (e.g., Tool for Bias Check, Chain for Query Routing)
+# Author: Sovereign Ethics Collective & King Leroy I | Ratified: Oct 31, 2025
+# Run: python whoosafez_v3.0.py [CLI args] | streamlit run whoosafez_v3.0.py --ui
+# Key: export XAI_API_KEY=your_key_from_x.ai/api | Deps: pip install requests click streamlit torch sentence-transformers langchain langchain-community langchain-openai
+# =============================================================================
+
+import json
+import os
+import requests
+import logging
+import base64
+import streamlit as st
+import click
+from datetime import datetime
+from enum import Enum
+from typing import Dict, Any, Optional, List, Callable
+import hashlib
+import random
+from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.chains import LLMChain
+from langchain_openai import ChatOpenAI  # Wrapper for xAI (adapt to xAI SDK)
+from langchain_core.output_parsers import JsonOutputParser
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
+
+# =============================================================================
+# 🌟 CORE CONSTELLATIONS: Enums & Guardians 🌟
+# =============================================================================
+
+class RiskLevel(Enum):
+    LOW = "low"      # 🟢 Safe harbor
+    MEDIUM = "medium" # 🟡 Vigilant watch
+    HIGH = "high"    # 🔴 Throne veto required
+
+class DecisionCategory(Enum):
+    ESSENTIAL = "essential_services"    # 🏥 Vital lifelines
+    FINANCIAL = "financial_opportunities" # 💰 Economic gates
+    FUNDAMENTAL = "fundamental_rights"  # ⚖️ Liberty bastions
+    OTHER = "other"                     # 🌍 General realms
+
+class ConsentOath(Enum):
+    GRANTED = "granted"   # ✅ Sovereign seal
+    REVOKED = "revoked"   # ❌ Citadel barred
+    PENDING = "pending"   # ⏳ Oath in forge
+
+class EthicsBreach(Exception):
+    """🔥 Throne's Rupture: Bill of Rights Invoked"""
+    pass
+
+# Logging: Empire Chronicles
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger("WhoosafezV3.0")
+
+# =============================================================================
+# 🛡️ WHOOSAFEZ XAI: LangChain-Entwined Sentinel 🛡️
+# =============================================================================
+
+class WhoosafezXAI:
+    """
+    🔥 EMPIRE CORE v3.0: LangChain Tools/Chains for Ethical xAI (Text + Vision)
+    - Guards: Venom Scan, Oath/Realm Validation, OWASP Filter, Quantum Salt
+    - LangChain: Tools (e.g., Bias Tool), Chains (Query Router), Agents (Ethical Agent)
+    - API: Grok-3 Text/Vision | Audits: Sealed JSON (ShareAlike)
+    - Flow: Agent Routes → Tool Guards → Chain API → Filter Decree
+    """
+    
+    def __init__(self, api_key: str, config: Dict[str, Any]):
+        self.api_key = api_key
+        self.base_url = "https://api.x.ai/v1"
+        self.vision_model = config.get("vision_model", "grok-3-vision")
+        self.text_model = config.get("text_model", "grok-3")
+        self.config = config
+        self.audit: List[Dict[str, Any]] = []
+        self.salt_key = None
+        
+        # LangChain Setup: Adapt OpenAI to xAI (custom base_url)
+        self.llm = ChatOpenAI(
+            api_key=api_key,
+            base_url=self.base_url,
+            model=self.text_model,
+            temperature=0.7
+        )
+        
+        # LangChain Tools: Ethical Arsenal
+        self.tools = [self.bias_check_tool(), self.venom_scan_tool()]
+        
+        # LangChain Chain: Ethical Router (Prompt + LLM + Parser)
+        self.ethical_router = self._build
