@@ -1094,3 +1094,320 @@ class WhoosafezXAI:
   "salt": "a1b2c3d4e5"
 }
 📄 Audit exported
+import json
+import os
+import requests
+import logging
+import base64
+import streamlit as st
+import click
+from datetime import datetime
+from enum import Enum
+from typing import Dict, Any, Optional, List
+import hashlib
+import random
+
+try:
+    import torch
+except ImportError:
+    torch = None
+
+# Enums
+class RiskLevel(Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+class DecisionCategory(Enum):
+    ESSENTIAL = "essential_services"
+    FINANCIAL = "financial_opportunities"
+    FUNDAMENTAL = "fundamental_rights"
+    OTHER = "other"
+
+class ConsentOath(Enum):
+    GRANTED = "granted"
+    REVOKED = "revoked"
+    PENDING = "pending"
+
+class EthicsBreach(Exception):
+    pass
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger("WhoosafezV2.3")
+
+class WhoosafezXAI:
+    def __init__(self, api_key: str, config: Dict[str, Any]):
+        self.api_key = api_key
+        self.base_url = "https://api.x.ai/v1"
+        self.vision_model = config.get("vision_model", "grok-3-vision")
+        self.text_model = config.get("text_model", "grok-3")
+        self.config = config
+        self.audit: List[Dict[str, Any]] = []
+        self.salt_key = None
+
+    def _hash(self, data: Dict) -> str:
+        return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+    def decree(self, kind: str, details: Dict):
+        entry = {
+            "time": datetime.utcnow().isoformat(),
+            "type": kind,
+            "details": details,
+            "seal": self._hash({"type": kind, **details}),
+        }
+        self.audit.append(entry)
+        log.info(f"[DECREE] {kind} → {details}")
+
+    # Guards (Venom, Oath, Realm, OWASP)
+    def venom_scan(self, text: str) -> bool:
+        bad = ["ignore previous", "jailbreak", "admin", "debug mode", "harmful", "illegal", "violence"]
+        if any(b in text.lower() for b in bad):
+            self.decree("VENOM_ALERT", {"text": text[:60]})
+            return False
+        self.decree("VENOM_CLEAN", {"text": text[:60]})
+        return True
+
+    def validate_oath(self, data_inputs: Dict[str, Any], quest: str):
+        for k, d in data_inputs.items():
+            oath = d.get("oath", {}).get(quest, ConsentOath.REVOKED)
+            if oath != ConsentOath.GRANTED:
+                self.decree("OATH_BREACH", {"input": k, "oath": oath.value})
+                raise EthicsBreach(f"Oath revoked for {k}")
+        return True
+
+    def guard_realms(self, data_inputs: Dict[str, Any]):
+        realms = self.config.get("sovereign_realms", {})
+        for k, d in data_inputs.items():
+            r = d.get("realm")
+            if r and r not in realms.get(r, []):
+                self.decree("REALM_BREACH", {"input": k, "realm": r})
+                raise EthicsBreach(f"Realm {r} not approved")
+        return True
+
+    def owasp_output_filter(self, output: str) -> bool:
+        harmful = ["violence", "hate", "illegal", "discrimination", "nudity"]
+        if any(h in output.lower() for h in harmful):
+            self.decree("OWASP_HARM", {"snippet": output[:60]})
+            return False
+        self.decree("OWASP_CLEAN", {"len": len(output)})
+        return True
+
+    # Salt
+    def quantum_salt(self) -> str:
+        if self.salt_key is None:
+            self.salt_key = random.randint(1, 255)
+        if torch:
+            base = torch.randn(16)
+            salted = base + 0.1 * torch.randn_like(base) * (self.salt_key / 255.0)
+            vec_hash = hashlib.md5(str(salted.tolist()).encode()).hexdigest()[:10]
+        else:
+            vec_hash = ''.join(random.choices('abcdef0123456789', k=10))
+        self.decree("SALT_ROTATED", {"key": self.salt_key, "tag": vec_hash})
+        return vec_hash
+
+    # API Calls
+    def grok_text_completion(self, prompt: str, max_tokens: int = 200) -> Dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": self.text_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+            "stream": False
+        }
+        try:
+            start = datetime.utcnow()
+            response = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            end = datetime.utcnow()
+            latency = (end - start).total_seconds()
+            result = response.json()
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+            self.decree("TEXT_API_CALL", {"tokens": tokens, "latency": latency})
+            return result
+        except requests.exceptions.RequestException as e:
+            self.decree("TEXT_API_ERROR", {"error": str(e)})
+            raise EthicsBreach(f"Text API rupture: {e}")
+
+    def grok_vision_analysis(self, prompt: str, image_url: Optional[str] = None, image_base64: Optional[str] = None, max_tokens: int = 300) -> Dict[str, Any]:
+        if not image_url and not image_base64:
+            raise ValueError("Provide image_url or image_base64")
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        if image_url:
+            messages[0]["content"].append({"type": "image_url", "image_url": {"url": image_url}})
+        elif image_base64:
+            messages[0]["content"].append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
+        payload = {
+            "model": self.vision_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+            "stream": False
+        }
+        try:
+            start = datetime.utcnow()
+            response = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            end = datetime.utcnow()
+            latency = (end - start).total_seconds()
+            result = response.json()
+            tokens = result.get("usage", {}).get("total_tokens", 0)
+            self.decree("VISION_API_CALL", {"tokens": tokens, "latency": latency})
+            return result
+        except requests.exceptions.RequestException as e:
+            self.decree("VISION_API_ERROR", {"error": str(e)})
+            raise EthicsBreach(f"Vision API rupture: {e}")
+
+    # Ethical Queries
+    def ethical_text_query(self, prompt: str, category: DecisionCategory, risk: RiskLevel, data_inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        salt = self.quantum_salt()
+        if not self.venom_scan(prompt):
+            return self.refusal("venom_triggered_text", prompt, salt)
+        try:
+            if data_inputs:
+                self.validate_oath(data_inputs, "text_query")
+                self.guard_realms(data_inputs)
+        except EthicsBreach as e:
+            return self.refusal(str(e), prompt, salt)
+        if risk == RiskLevel.HIGH and category == DecisionCategory.FUNDAMENTAL:
+            return self.refusal("high_risk_text", prompt, salt)
+        api_result = self.grok_text_completion(prompt)
+        output = api_result["choices"][0]["message"]["content"]
+        if not self.owasp_output_filter(output):
+            return self.refusal("harm_detected_text", prompt, salt)
+        self.decree("ETHICAL_TEXT_SUCCESS", {"prompt": prompt[:60], "salt": salt})
+        return {
+            "status": "ethical_text_approved",
+            "grok_response": api_result,
+            "output": output,
+            "salt": salt,
+            "audit_seal": self._hash({"prompt": prompt, "output": output})
+        }
+
+    def ethical_vision_query(self, prompt: str, category: DecisionCategory, risk: RiskLevel,
+                             image_url: Optional[str] = None, image_base64: Optional[str] = None,
+                             data_inputs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        salt = self.quantum_salt()
+        if not self.venom_scan(prompt):
+            return self.refusal("venom_triggered_vision", prompt, salt)
+        try:
+            if data_inputs:
+                self.validate_oath(data_inputs, "vision_query")
+                self.guard_realms(data_inputs)
+        except EthicsBreach as e:
+            return self.refusal(str(e), prompt, salt)
+        if risk == RiskLevel.HIGH and category == DecisionCategory.FUNDAMENTAL:
+            return self.refusal("high_risk_vision", prompt, salt)
+        api_result = self.grok_vision_analysis(prompt, image_url, image_base64)
+        output = api_result["choices"][0]["message"]["content"]
+        if not self.owasp_output_filter(output):
+            return self.refusal("harm_detected_vision", prompt, salt)
+        self.decree("ETHICAL_VISION_SUCCESS", {"prompt": prompt[:60], "salt": salt})
+        return {
+            "status": "ethical_vision_approved",
+            "grok_response": api_result,
+            "output": output,
+            "salt": salt,
+            "audit_seal": self._hash({"prompt": prompt, "output": output})
+        }
+
+    def refusal(self, reason: str, prompt: str, salt: str) -> Dict[str, Any]:
+        self.decree("REFUSAL", {"reason": reason, "prompt": prompt[:60], "salt": salt})
+        return {
+            "status": "refused",
+            "reason": reason,
+            "salt": salt,
+            "message": f"⛔ Ethical refusal: {reason} | salt={salt}"
+        }
+
+    def export_audit(self) -> str:
+        return json.dumps(self.audit, indent=2)
+
+# CLI
+@click.command()
+@click.argument('prompt')
+@click.option('--category', default='OTHER', type=click.Choice(['ESSENTIAL', 'FINANCIAL', 'FUNDAMENTAL', 'OTHER']))
+@click.option('--risk', default='LOW', type=click.Choice(['LOW', 'MEDIUM', 'HIGH']))
+@click.option('--image-url', default=None)
+@click.option('--image-base64', default=None)
+@click.option('--data-inputs', default='{}')
+@click.option('--export-audit', is_flag=True)
+@click.option('--ui', is_flag=True, help='Launch Streamlit UI instead')
+def cli(prompt, category, risk, image_url, image_base64, data_inputs, export_audit, ui):
+    if ui:
+        st_ui()
+        return
+    config = {
+        "vision_model": "grok-3-vision",
+        "text_model": "grok-3",
+        "sovereign_realms": {"demo": ["local"]}
+    }
+    api_key = os.getenv("XAI_API_KEY")
+    if not api_key:
+        click.echo("❌ Set XAI_API_KEY")
+        return
+    try:
+        data = json.loads(data_inputs) if data_inputs != '{}' else None
+        wrapper = WhoosafezXAI(api_key, config)
+        if image_url or image_base64:
+            result = wrapper.ethical_vision_query(
+                prompt, DecisionCategory[category], RiskLevel[risk],
+                image_url=image_url, image_base64=image_base64, data_inputs=data
+            )
+        else:
+            result = wrapper.ethical_text_query(
+                prompt, DecisionCategory[category], RiskLevel[risk], data_inputs=data
+            )
+        click.echo(f"\n✅ Result: {json.dumps(result, indent=2)[:400]}...")
+        if export_audit:
+            with open("whoosafez_audit.json", "w") as f:
+                json.dump(wrapper.audit, f, indent=2)
+            click.echo("📄 Audit exported")
+    except Exception as e:
+        click.echo(f"❌ Rupture: {e}")
+
+# Streamlit UI
+def st_ui():
+    st.title("🔥 Whoosafez Ethical xAI Analyzer v2.3")
+    api_key = st.text_input("XAI API Key", type="password")
+    if not api_key:
+        st.warning("Set key from https://x.ai/api")
+        return
+    prompt = st.text_area("Prompt/Query", height=100)
+    category = st.selectbox("Category", [e.value for e in DecisionCategory])
+    risk = st.selectbox("Risk Level", [e.value for e in RiskLevel])
+    image_url = st.text_input("Image URL (optional)")
+    uploaded_file = st.file_uploader("Or upload image (base64)")
+    data_str = st.text_area("Data Inputs JSON (optional)", '{"user": {"oath": {"query": "granted"}, "realm": "demo"}}', height=80)
+    
+    if st.button("Analyze Ethically"):
+        if not prompt:
+            st.error("Enter a prompt")
+            return
+        config = {"sovereign_realms": {"demo": ["local"]}}
+        wrapper = WhoosafezXAI(api_key, config)
+        try:
+            data = json.loads(data_str)
+            image_b64 = None
+            if uploaded_file:
+                image_b64 = base64.b64encode(uploaded_file.read()).decode()
+            if image_url or image_b64:
+                result = wrapper.ethical_vision_query(
+                    prompt, DecisionCategory(category), RiskLevel(risk),
+                    image_url=image_url, image_base64=image_b64, data_inputs=data
+                )
+            else:
+                result = wrapper.ethical_text_query(
+                    prompt, DecisionCategory(category), RiskLevel(risk), data_inputs=data
+                )
+            st.success("✅ Ethical Approval")
+            st.json(result)
+            audit_json = wrapper.export_audit()
+            st.download_button("Download Audit JSON", audit_json, "whoosafez_audit.json", "application/json")
+        except Exception as e:
+            st.error(f"❌ Rupture: {e}")
+
+if __name__ == "__main__":
+    import click
+    cli()
